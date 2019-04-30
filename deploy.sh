@@ -2,7 +2,7 @@
 
 # ----------------------
 # KUDU Deployment Script
-# Version: 0.1.10
+# Version: 0.1.11
 # ----------------------
 
 # Helpers
@@ -78,7 +78,7 @@ selectNodeVersion () {
       exitWithMessageOnError "getting node version failed"
     fi
     
-    if [[ -e "$DEPLOYMENT_TEMP/.tmp" ]]; then
+    if [[ -e "$DEPLOYMENT_TEMP/__npmVersion.tmp" ]]; then
       NPM_JS_PATH=`cat "$DEPLOYMENT_TEMP/__npmVersion.tmp"`
       exitWithMessageOnError "getting npm version failed"
     fi
@@ -99,33 +99,27 @@ selectNodeVersion () {
 # ----------
 
 echo Handling node.js deployment.
+echo "\"$SCM_COMMIT_ID\"" > $DEPLOYMENT_SOURCE/scm-commit-id.json
 
-# 1. Select node version
+# 1. KuduSync
+if [[ "$IN_PLACE_DEPLOYMENT" -ne "1" ]]; then
+  "$KUDU_SYNC_CMD" -v 50 -f "$DEPLOYMENT_SOURCE" -t "$DEPLOYMENT_TARGET" -n "$NEXT_MANIFEST_PATH" -p "$PREVIOUS_MANIFEST_PATH" -i ".git;.hg;.deployment;deploy.sh"
+  exitWithMessageOnError "Kudu Sync failed"
+fi
+
+# 2. Select node version
 selectNodeVersion
 
-# 2. Install npm packages
-if [ -e "$DEPLOYMENT_SOURCE/package.json" ]; then
-  # cd "$DEPLOYMENT_SOURCE"
-  eval $NPM_CMD set ca ""
-  eval $NPM_CMD install --production
+# 3. Install npm packages
+if [ -e "$DEPLOYMENT_TARGET/package.json" ]; then
+  cd "$DEPLOYMENT_TARGET"
+  echo Installing webpack and webpack-command and yargs
+  eval $NPM_CMD install -g webpack webpack-command 
+  eval $NPM_CMD install yargs
+  eval $NPM_CMD install --production --scripts-prepend-node-path
   exitWithMessageOnError "npm failed"
-  # cd - > /dev/null
+  cd - > /dev/null
 fi
-if [ -e "$DEPLOYMENT_SOURCE/bower.json" ]; then
-  # cd "$DEPLOYMENT_SOURCE"
-  ./node_modules/.bin/bower install
-  exitWithMessageOnError "bower failed"
-  # cd - > /dev/null
-fi
-
-# 3. KuduSync
-# if [[ "$IN_PLACE_DEPLOYMENT" -ne "1" ]]; then
-#  "$KUDU_SYNC_CMD" -v 50 -f "$DEPLOYMENT_SOURCE" -t "$DEPLOYMENT_TARGET" -n "$NEXT_MANIFEST_PATH" -p "$PREVIOUS_MANIFEST_PATH" -i ".git;.hg;.deployment;deploy.sh"
-#  exitWithMessageOnError "Kudu Sync failed"
-# fi
-# 3. KuduSync to Target
-"$KUDU_SYNC_CMD" -v 500 -f "$DEPLOYMENT_SOURCE/" -t "$DEPLOYMENT_TARGET" -n "$NEXT_MANIFEST_PATH" -p "$PREVIOUS_MANIFEST_PATH" -i ".git;.hg;.deployment;deploy.sh"
-exitWithMessageOnError "Kudu Sync to Target failed"
 
 ##################################################################################################################################
 
